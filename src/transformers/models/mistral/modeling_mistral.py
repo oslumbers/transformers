@@ -357,6 +357,11 @@ class MistralFlashAttention2(MistralAttention):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
+            #print(past_key_value)
+            if not isinstance(past_key_value, DynamicCache):
+                past_key_value = DynamicCache.from_legacy_cache(past_key_value)
+            #past_key_value = DynamicCache.from_legacy_cache(past_key_value)
+            #print(past_key_value)
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
         # Because the input can be padded, the absolute sequence length depends on the max position id.
@@ -927,6 +932,7 @@ class MistralModel(MistralPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+        #past_key_values = None
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -949,12 +955,15 @@ class MistralModel(MistralPreTrainedModel):
 
         past_key_values_length = 0
 
-        if use_cache:
+        if use_cache or past_key_values is not None:
             use_legacy_cache = not isinstance(past_key_values, Cache)
             if use_legacy_cache:
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
             past_key_values_length = past_key_values.get_usable_length(seq_length)
 
+        #print(len(past_key_values.key_cache))
+        #print(past_key_values.key_cache[0].shape)
+        #print(position_ids)
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
@@ -975,6 +984,7 @@ class MistralModel(MistralPreTrainedModel):
                     " this may lead to unexpected behaviour for Flash Attention version of Mistral. Make sure to "
                     " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
                 )
+        #print(position_ids)
 
         if self._attn_implementation == "flash_attention_2":
             # 2d mask is passed through the layers
@@ -1001,6 +1011,10 @@ class MistralModel(MistralPreTrainedModel):
 
         hidden_states = inputs_embeds
 
+        #print('hi')
+        #print(past_key_values.key_cache[0].shape)
+        #print('hi')
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -1010,16 +1024,26 @@ class MistralModel(MistralPreTrainedModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
+            #if past_key_values is not None:
+            #    print(past_key_values.key_cache[0].shape)
+            #else:
+            #    print('no past key values')
+            #print('bye')
+
             if self.gradient_checkpointing and self.training:
+                #print(past_key_values.key_cache[0].shape)
+                #use_cache = True
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
                     attention_mask,
                     position_ids,
-                    past_key_values,
+                    #past_key_values,
                     output_attentions,
                     use_cache,
                 )
+                #print('done')
+                #print(past_key_values.key_cache[0].shape)
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
