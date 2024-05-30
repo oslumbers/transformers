@@ -133,16 +133,18 @@ def evaluate_function_def(func_def, state, tools):
                 func_state[kwarg_name] = kwargs
 
             # Update function state with self and __class__
-            if func_def.args.args and func_def.args.args[0].arg == 'self':
+            if func_def.args.args and func_def.args.args[0].arg == "self":
                 if args:
-                    func_state['self'] = args[0]
-                    func_state['__class__'] = args[0].__class__
+                    func_state["self"] = args[0]
+                    func_state["__class__"] = args[0].__class__
 
             result = None
             for stmt in func_def.body:
                 result = evaluate_ast(stmt, func_state, tools)
             return result
+
         return func
+
     tools[func_def.name] = create_function(func_def, state, tools)
     return tools[func_def.name]
 
@@ -164,7 +166,6 @@ def evaluate_class_def(class_def, state, tools):
     new_class = type(class_name, tuple(bases), class_dict)
     state[class_name] = new_class
     return new_class
-
 
 
 def evaluate_augassign(expression: ast.AugAssign, state: Dict[str, Any], tools: Dict[str, Callable]):
@@ -246,15 +247,19 @@ def evaluate_assign(assign, state, tools):
         elif isinstance(target, ast.Attribute):
             obj = evaluate_ast(target.value, state, tools)
             setattr(obj, target.attr, result)
+        elif isinstance(target, ast.Subscript):
+            obj = evaluate_ast(target.value, state, tools)
+            key = evaluate_ast(target.slice, state, tools)
+            obj[key] = result
         else:
             state[target.id] = result
+
     else:
         if len(result) != len(var_names):
             raise InterpretorError(f"Expected {len(var_names)} values but got {len(result)}.")
         for var_name, r in zip(var_names, result):
             state[var_name.id] = r
     return result
-
 
 
 def evaluate_call(call, state, tools):
@@ -280,21 +285,21 @@ def evaluate_call(call, state, tools):
             raise InterpretorError(
                 f"It is not permitted to evaluate other functions than the provided tools or imported functions (tried to execute {call.func.id})."
             )
-        
+
     args = [evaluate_ast(arg, state, tools) for arg in call.args]
     kwargs = {keyword.arg: evaluate_ast(keyword.value, state, tools) for keyword in call.keywords}
 
-    if isinstance(func, type) and len(func.__module__.split('.')) > 1:  # Check for user-defined classes
+    if isinstance(func, type) and len(func.__module__.split(".")) > 1:  # Check for user-defined classes
         # Instantiate the class using its constructor
         obj = func.__new__(func)  # Create a new instance of the class
-        if hasattr(obj, '__init__'):  # Check if the class has an __init__ method
+        if hasattr(obj, "__init__"):  # Check if the class has an __init__ method
             obj.__init__(*args, **kwargs)  # Call the __init__ method correctly
         return obj
     else:
         if func_name == "super":
             if not args:
-                if '__class__' in state and 'self' in state:
-                    return super(state['__class__'], state['self'])
+                if "__class__" in state and "self" in state:
+                    return super(state["__class__"], state["self"])
                 else:
                     raise InterpretorError("super() needs at least one argument")
             cls = args[0]
@@ -307,17 +312,15 @@ def evaluate_call(call, state, tools):
                 return super(cls, instance)
             else:
                 raise InterpretorError("super() takes at most 2 arguments")
-    
+
         else:
-            # Assume it's a callable object
-            output = func(*args, **kwargs)
-
-            # Store logs of print statements
             if func_name == "print":
+                output = " ".join(map(str, args))
                 state["print_outputs"] += output + "\n"
-
-
-            return output
+                return output
+            else:  # Assume it's a callable object
+                output = func(*args, **kwargs)
+                return output
 
 
 def evaluate_subscript(subscript, state, tools):
@@ -337,8 +340,15 @@ def evaluate_subscript(subscript, state, tools):
             return value[close_matches[0]]
     raise InterpretorError(f"Could not index {value} with '{index}'.")
 
+
 import builtins
-ERRORS = {name: getattr(builtins, name) for name in dir(builtins) if isinstance(getattr(builtins, name), type) and issubclass(getattr(builtins, name), BaseException)}
+
+ERRORS = {
+    name: getattr(builtins, name)
+    for name in dir(builtins)
+    if isinstance(getattr(builtins, name), type) and issubclass(getattr(builtins, name), BaseException)
+}
+
 
 def evaluate_name(name, state, tools):
     if name.id in state:
@@ -462,7 +472,6 @@ def evaluate_try(try_node, state, tools):
         if try_node.finalbody:
             for stmt in try_node.finalbody:
                 evaluate_ast(stmt, state, tools)
-
 
 
 def evaluate_raise(raise_node, state, tools):
